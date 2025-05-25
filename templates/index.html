@@ -35,12 +35,19 @@
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            margin-bottom: 40px;
             font-size: 14px;
         }
         th, td {
             border: 1px solid #dee2e6;
             padding: 12px;
             text-align: left;
+        }
+        td:last-child {
+            text-align: right;  /* Right-align amounts */
+        }
+        th:last-child {
+            text-align: right;  /* Right-align Amount header */
         }
         th {
             background-color: #f8f9fa;
@@ -59,6 +66,10 @@
         }
         .amount-negative {
             color: #dc3545;
+        }
+        .table-preview .amount-positive,
+        .table-preview .amount-negative {
+            display: inline;  /* Show only when table-preview is visible */
         }
         .summary-info {
             margin: 20px 0;
@@ -85,6 +96,7 @@
             background-color: #0056b3;
         }
         .error {
+            display: none;  /* Hide by default */
             color: #dc3545;
             margin-top: 10px;
             padding: 10px;
@@ -93,6 +105,7 @@
             border-radius: 4px;
         }
         .success {
+            display: none;  /* Hide by default */
             color: #28a745;
             margin-top: 10px;
             padding: 10px;
@@ -232,13 +245,6 @@
 
             // Show summary information
             let summaryHtml = '';
-            if (table.beginning_balance) {
-                summaryHtml += `
-                    <div class="summary-row">
-                        <span>Beginning Balance:</span>
-                        <span>${table.beginning_balance}</span>
-                    </div>`;
-            }
             if (table.total_amount) {
                 summaryHtml += `
                     <div class="summary-row">
@@ -267,9 +273,9 @@
                 html += '<tr>';
                 table.rows[i].forEach((cell, index) => {
                     if (index === 2) { // Amount column
-                        const isPositive = cell.includes('+');
-                        const className = isPositive ? 'amount-positive' : 'amount-negative';
-                        html += `<td class="${className}">${cell}</td>`;
+                        const amount = parseFloat(cell.replace('$', '').replace(',', ''));
+                        const color = amount < 0 ? '#dc3545' : '#28a745';
+                        html += `<td style="color: ${color}">${cell}</td>`;
                     } else {
                         html += `<td>${cell}</td>`;
                     }
@@ -287,7 +293,7 @@
             const errorDiv = document.getElementById('error');
             const successDiv = document.getElementById('success');
             errorDiv.style.display = message ? 'block' : 'none';
-            errorDiv.textContent = message;
+            errorDiv.textContent = message || '';
             successDiv.style.display = 'none';
         }
 
@@ -295,7 +301,7 @@
             const errorDiv = document.getElementById('error');
             const successDiv = document.getElementById('success');
             successDiv.style.display = message ? 'block' : 'none';
-            successDiv.textContent = message;
+            successDiv.textContent = message || '';
             errorDiv.style.display = 'none';
         }
 

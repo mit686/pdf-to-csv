@@ -78,7 +78,7 @@ def process_pdf(pdf_path):
                 line_lower = line.lower().strip()
                 
                 # Look for transaction section markers
-                if 'transactions' in line_lower or (
+                if ('transactions' in line_lower and not any(marker in line_lower for marker in ['processed', 'total'])) or (
                     'date' in line_lower and 
                     'description' in line_lower and 
                     'amount' in line_lower
@@ -87,13 +87,19 @@ def process_pdf(pdf_path):
                     header_found = True
                     continue
                 
+                # For pages after first, consider any line starting with date as transaction data
+                if page_num > 1 and not header_found and len(line.strip()) >= 8:
+                    # Check if line starts with MM/DD/YY
+                    if line[2] == '/' and line[5] == '/' and '$' in line:
+                        transaction_data.append(line.strip())
+                        continue
+                
                 if header_found and i > transaction_start:
                     # Skip empty lines and section markers
-                    if not line.strip() or any(marker in line_lower for marker in ['page', 'banking services', 'envelopes']):
+                    if not line.strip() or any(marker in line_lower for marker in ['page', 'banking services', 'envelopes', 'in case of']):
                         continue
                         
                     # Check if this line looks like a transaction
-                    # Transaction lines typically start with a date (MM/DD/YYYY)
                     if line.strip() and (
                         len(line.split()) >= 3 and  # At least date, description, amount
                         ('/' in line or '$' in line)  # Contains date separator or dollar sign
@@ -109,8 +115,8 @@ def process_pdf(pdf_path):
                 current_transaction = None
                 
                 for line in transaction_data:
-                    # Check if line starts with a date pattern (MM/DD/YYYY)
-                    if len(line) >= 10 and line[2] == '/' and line[5] == '/':
+                    # Check if line starts with a date pattern (MM/DD/YY)
+                    if len(line) >= 8 and line[2] == '/' and line[5] == '/':  # Changed from 10 to 8 for MM/DD/YY format
                         # If we have a previous transaction, add it
                         if current_transaction:
                             all_transactions.append(current_transaction)
@@ -135,9 +141,11 @@ def process_pdf(pdf_path):
                                     amount = part
                                 break
                         
-                        # Description is everything between date and amount, excluding the sign
+                        # Description is everything between date and amount
                         desc_start = line.find(parts[1])  # Start after date
-                        desc_end = line.find(parts[amount_index])  # End before amount and sign
+                        desc_end = line.rfind('$')  # End before the last $ sign
+                        if desc_end == -1:  # If no $ sign found
+                            desc_end = len(line)
                         description = line[desc_start:desc_end].strip()
                         
                         current_transaction = [date, description, amount]
@@ -148,7 +156,7 @@ def process_pdf(pdf_path):
                         if not any(symbol in continuation for symbol in ['$', '+', '-']):
                             current_transaction[1] += ' ' + continuation
                 
-                # Don't forget to add the last transaction
+                # Don't forget to add the last transaction of each page
                 if current_transaction:
                     all_transactions.append(current_transaction)
     
@@ -174,7 +182,7 @@ def process_pdf(pdf_path):
             'rows': [['DATE', 'DESCRIPTION', 'AMOUNT']] + all_transactions,  # Don't include total in rows
             'row_count': len(all_transactions) + 1,
             'col_count': 3,
-            'preview': [['DATE', 'DESCRIPTION', 'AMOUNT']] + all_transactions[:4] + [['', 'Total amount', total_amount_str]],  # Include total only in preview
+            'preview': [['DATE', 'DESCRIPTION', 'AMOUNT']] + all_transactions + [['', 'Total amount', total_amount_str]],  # Include all transactions
             'total_amount': total_amount_str,  # Store total amount separately
             'beginning_balance': beginning_balance  # Add beginning balance to table info
         }
@@ -215,6 +223,12 @@ def convert_table_to_csv(table_data, column_mapping=None):
     
     # Remove empty rows
     result_df = result_df.replace('', pd.NA).dropna(how='all')
+    
+    # Remove commas from Description column
+    result_df['Description'] = result_df['Description'].str.replace(',', '')
+    
+    # Remove dollar signs and commas from Amount column
+    result_df['Amount'] = result_df['Amount'].str.replace('$', '').str.replace(',', '')
     
     return result_df if not result_df.empty else None
 
