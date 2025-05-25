@@ -19,7 +19,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize Talisman for security headers
 Talisman(app, 
-         force_https=False,
+         force_https=True,  # Force HTTPS
          content_security_policy={
              'default-src': "'self'",
              'script-src': "'self' 'unsafe-inline'",
@@ -316,5 +316,8 @@ if __name__ == '__main__':
     host = '0.0.0.0'
     debug = False
     
-    print(f"Starting Flask application on {host}:{port}")
-    app.run(host=host, port=port, debug=debug) 
+    # SSL context
+    ssl_context = ('ssl/cert.pem', 'ssl/key.pem')
+    
+    print(f"Starting Flask application on {host}:{port} (HTTPS)")
+    app.run(host=host, port=port, debug=debug, ssl_context=ssl_context) 
