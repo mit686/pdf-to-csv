@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to CSV Converter</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f5f5f7;
+        }
+
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1200px;
+            text-align: center;
+        }
+
+        h1, h2, h3 {
+            color: #1d1d1f;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 2rem;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .upload-area:hover {
+            border-color: #007AFF;
+            background-color: #f0f8ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #007AFF;
+            background-color: #f0f8ff;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #007AFF;
+            margin-bottom: 1rem;
+        }
+
+        .button {
+            background-color: #007AFF;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin: 0.5rem;
+        }
+
+        .button:hover {
+            background-color: #0056b3;
+        }
+
+        .button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 6px;
+        }
+
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        #loading {
+            display: none;
+            margin: 1rem 0;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007AFF;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tables-container {
+            display: none;
+            margin-top: 2rem;
+        }
+
+        .table-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin: 1rem 0;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: left;
+        }
+
+        .table-card:hover {
+            border-color: #007AFF;
+            background-color: #f8f9fa;
+        }
+
+        .table-card.selected {
+            border-color: #007AFF;
+            background-color: #f0f8ff;
+        }
+
+        .table-preview {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .preview-table th,
+        .preview-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .preview-table th {
+            background-color: #f8f9fa;
+        }
+
+        .table-info {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .column-mapping {
+            margin: 1rem 0;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .mapping-row {
+            display: flex;
+            align-items: center;
+            margin: 0.5rem 0;
+            gap: 1rem;
+        }
+
+        .mapping-row label {
+            min-width: 100px;
+        }
+
+        select {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+
+        .buttons-container {
+            margin-top: 1rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .total-row, .balance-row {
+            font-weight: bold;
+            border-top: 2px solid #333;
+        }
+        
+        .total-row td, .balance-row td {
+            padding-top: 10px;
+        }
+
+        .balance-row {
+            border-top: none;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PDF to CSV Converter</h1>
+        <p>Upload a PDF file to extract tables and convert them to CSV format.</p>
+        
+        <form id="upload-form">
+            <div class="upload-area" id="drop-zone">
+                <div class="upload-icon">📄</div>
+                <p>Drag and drop your PDF file here<br>or click to select a file</p>
+                <input type="file" id="file-input" accept=".pdf" />
+            </div>
+            <button type="submit" class="button">Upload PDF</button>
+        </form>
+
+        <div id="loading">
+            <div class="spinner"></div>
+            <p>Processing your file...</p>
+        </div>
+
+        <div id="status"></div>
+
+        <div id="tables-container" class="tables-container">
+            <h2>Found Tables</h2>
+            <p>Select a table to convert to CSV:</p>
+            <div id="tables-list"></div>
+            
+            <div id="column-mapping" class="column-mapping">
+                <h3>Column Mapping</h3>
+                <div class="mapping-row">
+                    <label for="date-column">Date:</label>
+                    <select id="date-column"></select>
+                </div>
+                <div class="mapping-row">
+                    <label for="description-column">Description:</label>
+                    <select id="description-column"></select>
+                </div>
+                <div class="mapping-row">
+                    <label for="amount-column">Amount:</label>
+                    <select id="amount-column"></select>
+                </div>
+            </div>
+
+            <div class="buttons-container">
+                <button id="convert-button" class="button" disabled>Convert Selected Table</button>
+                <button id="cancel-button" class="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('upload-form');
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const status = document.getElementById('status');
+        const loading = document.getElementById('loading');
+        const tablesContainer = document.getElementById('tables-container');
+        const tablesList = document.getElementById('tables-list');
+        const columnMapping = document.getElementById('column-mapping');
+        const convertButton = document.getElementById('convert-button');
+        const cancelButton = document.getElementById('cancel-button');
+        const dateSelect = document.getElementById('date-column');
+        const descriptionSelect = document.getElementById('description-column');
+        const amountSelect = document.getElementById('amount-column');
+
+        let selectedTableIndex = null;
+
+        // Handle drag and drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        dropZone.addEventListener('drop', handleDrop, false);
+        dropZone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            fileInput.files = files;
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    showError('Please select a PDF file');
+                    fileInput.value = '';
+                }
+            }
+        }
+
+        function showTables(tables) {
+            tablesList.innerHTML = '';
+            tables.forEach((table, index) => {
+                const tableCard = document.createElement('div');
+                tableCard.className = 'table-card';
+                tableCard.innerHTML = `
+                    <div class="table-info">
+                        <strong>Table ${index + 1}</strong> (Page ${table.page})
+                        <br>
+                        Size: ${table.row_count} rows × ${table.col_count} columns
+                    </div>
+                    <div class="table-preview">
+                        <table class="preview-table">
+                            ${table.preview.map(row => `
+                                <tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>
+                            `).join('')}
+                        </table>
+                    </div>
+                `;
+                
+                tableCard.addEventListener('click', () => selectTable(index, table));
+                tablesList.appendChild(tableCard);
+            });
+            
+            tablesContainer.style.display = 'block';
+            form.style.display = 'none';
+        }
+
+        function selectTable(index, table) {
+            // Remove previous selection
+            const previousSelected = document.querySelector('.table-card.selected');
+            if (previousSelected) {
+                previousSelected.classList.remove('selected');
+            }
+            
+            // Add selection to clicked table
+            const tableCards = document.querySelectorAll('.table-card');
+            tableCards[index].classList.add('selected');
+            
+            selectedTableIndex = index;
+            convertButton.disabled = false;
+            
+            // Show column mapping if table has headers
+            if (table.rows && table.rows.length > 0) {
+                const headers = table.rows[0];
+                populateColumnSelects(headers);
+                columnMapping.style.display = 'block';
+            }
+        }
+
+        function populateColumnSelects(headers) {
+            const selects = [dateSelect, descriptionSelect, amountSelect];
+            selects.forEach(select => {
+                select.innerHTML = '';
+                headers.forEach((header, index) => {
+                    const option = document.createElement('option');
+                    option.value = header;
+                    option.textContent = header || `Column ${index + 1}`;
+                    select.appendChild(option);
+                });
+            });
+
+            // Try to automatically select appropriate columns
+            headers.forEach((header, index) => {
+                const headerLower = header.toLowerCase();
+                if (headerLower.includes('date')) {
+                    dateSelect.value = header;
+                } else if (headerLower.includes('desc')) {
+                    descriptionSelect.value = header;
+                } else if (headerLower.includes('amount')) {
+                    amountSelect.value = header;
+                }
+            });
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const file = fileInput.files[0];
+            if (!file) {
+                showError('Please select a file');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            loading.style.display = 'block';
+            status.innerHTML = '';
+            status.className = '';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to process file');
+                }
+
+                showTables(data.tables);
+                showSuccess('PDF processed successfully. Please select a table to convert.');
+            } catch (error) {
+                showError(error.message);
+                form.style.display = 'block';
+                tablesContainer.style.display = 'none';
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        convertButton.addEventListener('click', async () => {
+            if (selectedTableIndex === null) {
+                showError('Please select a table first');
+                return;
+            }
+
+            const mapping = {
+                date: dateSelect.value,
+                description: descriptionSelect.value,
+                amount: amountSelect.value
+            };
+
+            loading.style.display = 'block';
+            try {
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        tableIndex: selectedTableIndex,
+                        mapping: mapping
+                    })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to convert file');
+                }
+
+                // Get the filename from the response headers if available
+                const contentDisposition = response.headers.get('content-disposition');
+                const filename = contentDisposition
+                    ? contentDisposition.split('filename=')[1].replace(/["']/g, '')
+                    : 'converted.csv';
+
+                // Create a blob from the response
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+
+                showSuccess('File converted successfully!');
+                resetForm();
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+
+        cancelButton.addEventListener('click', resetForm);
+
+        function resetForm() {
+            form.style.display = 'block';
+            tablesContainer.style.display = 'none';
+            columnMapping.style.display = 'none';
+            fileInput.value = '';
+            status.innerHTML = '';
+            status.className = '';
+            selectedTableIndex = null;
+            convertButton.disabled = true;
+        }
+
+        function showError(message) {
+            status.textContent = message;
+            status.className = 'error';
+        }
+
+        function showSuccess(message) {
+            status.textContent = message;
+            status.className = 'success';
+        }
+
+        function displayTable(table, tableIndex) {
+            const tableContainer = document.getElementById('tableContainer');
+            let html = `<h3>Table ${tableIndex + 1}</h3>
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>`;
+            
+            // Add headers
+            table.preview[0].forEach(header => {
+                html += `<th>${header}</th>`;
+            });
+            
+            html += `</tr></thead><tbody>`;
+            
+            // Add preview rows
+            for (let i = 1; i < table.preview.length; i++) {
+                const isTotal = table.preview[i][1] === 'Total amount';
+                html += `<tr${isTotal ? ' class="total-row"' : ''}>`;
+                table.preview[i].forEach(cell => {
+                    html += `<td>${cell}</td>`;
+                });
+                html += '</tr>';
+            }
+
+            // Add beginning balance if available
+            if (table.beginning_balance) {
+                html += `<tr class="balance-row">
+                            <td></td>
+                            <td>${table.beginning_balance}</td>
+                            <td></td>
+                        </tr>`;
+            }
+            
+            html += `</tbody></table></div>`;
+            
+            if (table.row_count > table.preview.length) {
+                html += `<p>Showing ${table.preview.length - 2} of ${table.row_count - 2} transactions</p>`;  // -2 for header and total
+            }
+            
+            html += `<button class="btn btn-primary" onclick="convertTable(${tableIndex})">Convert to CSV</button>`;
+            tableContainer.innerHTML = html;
+        }
+    </script>
+</body>
+</html> 
