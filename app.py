@@ -142,13 +142,11 @@ def extract_tables_from_pdf(pdf_path):
             amount = float(amount_str.replace('$', '').replace(',', ''))
             total_amount += amount
 
-        # Format total amount with sign and 2 decimal places
-        total_amount_str = '{:+,.2f}'.format(total_amount)
-        if not total_amount_str.startswith('+'):
-            total_amount_str = '+' + total_amount_str
-        total_amount_str = '$' + total_amount_str.lstrip('+')
-        if total_amount < 0:
-            total_amount_str = '-$' + total_amount_str.lstrip('-')
+        # Format total amount with proper sign and dollar sign
+        if total_amount >= 0:
+            total_amount_str = f"${total_amount:,.2f}"
+        else:
+            total_amount_str = f"-${abs(total_amount):,.2f}"
 
         # Create a single table with all transactions
         table_info = {
