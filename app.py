@@ -1,30 +1,49 @@
 import os
-from flask import Flask, render_template, request, send_file, jsonify, session
+from flask import Flask, render_template, request, send_file, jsonify
 import pdfplumber
 import pandas as pd
 from werkzeug.utils import secure_filename
 import json
 import re
-from flask_talisman import Talisman  # For security headers
+from flask_talisman import Talisman
+import time
 
 app = Flask(__name__)
+
+# Basic configuration
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-here')  # Get from environment variable
+
+# Ensure upload directory exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize Talisman for security headers
 Talisman(app, 
-         force_https=False,  # Set to True in production
+         force_https=False,
          content_security_policy={
              'default-src': "'self'",
              'script-src': "'self' 'unsafe-inline'",
              'style-src': "'self' 'unsafe-inline'"
          })
 
-# Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+def allowed_file(filename):
+    """Check if the file extension is allowed."""
+    return filename.lower().endswith('.pdf')
 
-def extract_tables_from_pdf(pdf_path):
+def clean_old_files():
+    """Clean files older than 30 minutes."""
+    current_time = time.time()
+    for file in os.listdir(app.config['UPLOAD_FOLDER']):
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file)
+        try:
+            if os.path.isfile(file_path):
+                # Remove if older than 30 minutes
+                if current_time - os.path.getmtime(file_path) > 1800:
+                    os.remove(file_path)
+        except Exception as e:
+            print(f"Error cleaning up file {file_path}: {e}")
+
+def process_pdf(pdf_path):
     print(f"Processing PDF file: {pdf_path}")
     all_transactions = []  # Store all transactions from all pages
     beginning_balance = None
@@ -201,6 +220,7 @@ def convert_table_to_csv(table_data, column_mapping=None):
 
 @app.route('/')
 def index():
+    clean_old_files()
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
@@ -212,50 +232,56 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
     
-    if not file.filename.lower().endswith('.pdf'):
-        return jsonify({'error': 'File must be a PDF'}), 400
+    if file and allowed_file(file.filename):
+        try:
+            filename = secure_filename(file.filename)
+            temp_file = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(temp_file)
+            
+            # Process the PDF file immediately
+            tables = process_pdf(temp_file)
+            if not tables:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                return jsonify({'error': 'No tables found in the PDF'}), 400
+            
+            return jsonify({
+                'message': 'File uploaded successfully',
+                'tables': tables,
+                'filename': filename  # Send filename back to client
+            })
+            
+        except Exception as e:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+            return jsonify({'error': str(e)}), 500
     
-    try:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        # Extract all tables
-        tables = extract_tables_from_pdf(filepath)
-        
-        if not tables:
-            os.remove(filepath)
-            return jsonify({'error': 'No tables found in PDF'}), 400
-        
-        # Store the file path and tables in session
-        session['temp_file'] = filepath
-        session['tables'] = tables
-        
-        return jsonify({
-            'success': True,
-            'tables': tables
-        })
-        
-    except Exception as e:
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/convert', methods=['POST'])
 def convert_to_csv():
     try:
-        if 'temp_file' not in session or 'tables' not in session:
-            return jsonify({'error': 'No file to convert'}), 400
-        
-        # Get the selected table index and column mapping
         data = request.json
+        filename = data.get('filename')
         table_index = data.get('tableIndex')
         column_mapping = data.get('mapping')
+        
+        if not filename:
+            return jsonify({'error': 'No filename provided'}), 400
+        
+        temp_file = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(filename))
+        
+        if not os.path.exists(temp_file):
+            return jsonify({'error': 'File not found. Please upload the file again.'}), 400
+        
+        # Process the PDF file again
+        tables = process_pdf(temp_file)
+        if not tables:
+            return jsonify({'error': 'Could not process PDF file'}), 400
         
         if table_index is None:
             return jsonify({'error': 'No table selected'}), 400
         
-        tables = session['tables']
         if table_index >= len(tables):
             return jsonify({'error': 'Invalid table index'}), 400
         
@@ -267,15 +293,13 @@ def convert_to_csv():
             return jsonify({'error': 'Could not convert table to CSV'}), 400
         
         # Save as CSV
-        filepath = session['temp_file']
-        csv_filename = os.path.splitext(os.path.basename(filepath))[0] + '.csv'
+        csv_filename = os.path.splitext(filename)[0] + '.csv'
         csv_filepath = os.path.join(app.config['UPLOAD_FOLDER'], csv_filename)
         df.to_csv(csv_filepath, index=False)
         
-        # Clean up
-        os.remove(filepath)
-        session.pop('temp_file', None)
-        session.pop('tables', None)
+        # Clean up the PDF file
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
         
         return send_file(
             csv_filepath,
@@ -288,14 +312,9 @@ def convert_to_csv():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    # Get port from environment variable or default to 5001
     port = int(os.environ.get('PORT', 5001))
-    
-    # Get host from environment variable or default to 0.0.0.0
-    host = os.environ.get('HOST', '0.0.0.0')
-    
-    # In production, debug should be False
-    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    host = '0.0.0.0'
+    debug = False
     
     print(f"Starting Flask application on {host}:{port}")
     app.run(host=host, port=port, debug=debug) 
