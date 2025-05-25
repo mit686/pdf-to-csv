@@ -5,11 +5,21 @@ import pandas as pd
 from werkzeug.utils import secure_filename
 import json
 import re
+from flask_talisman import Talisman  # For security headers
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.secret_key = 'your-secret-key-here'  # Required for session
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your-secret-key-here')  # Get from environment variable
+
+# Initialize Talisman for security headers
+Talisman(app, 
+         force_https=False,  # Set to True in production
+         content_security_policy={
+             'default-src': "'self'",
+             'script-src': "'self' 'unsafe-inline'",
+             'style-src': "'self' 'unsafe-inline'"
+         })
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -280,5 +290,14 @@ def convert_to_csv():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("Starting Flask application...")
-    app.run(debug=True, port=5001) 
+    # Get port from environment variable or default to 5001
+    port = int(os.environ.get('PORT', 5001))
+    
+    # Get host from environment variable or default to 0.0.0.0
+    host = os.environ.get('HOST', '0.0.0.0')
+    
+    # In production, debug should be False
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    
+    print(f"Starting Flask application on {host}:{port}")
+    app.run(host=host, port=port, debug=debug) 
