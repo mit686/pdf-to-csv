@@ -5,7 +5,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -18,23 +18,59 @@
         }
         .upload-form {
             margin-bottom: 20px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
         }
         .table-preview {
             margin-top: 20px;
             display: none;
         }
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
+            font-size: 14px;
         }
         th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
+            border: 1px solid #dee2e6;
+            padding: 12px;
             text-align: left;
         }
         th {
             background-color: #f8f9fa;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #f2f2f2;
+        }
+        .amount-positive {
+            color: #28a745;
+        }
+        .amount-negative {
+            color: #dc3545;
+        }
+        .summary-info {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
         }
         .button {
             background-color: #007bff;
@@ -43,20 +79,35 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 14px;
         }
         .button:hover {
             background-color: #0056b3;
         }
         .error {
-            color: red;
+            color: #dc3545;
             margin-top: 10px;
+            padding: 10px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
         }
         .success {
-            color: green;
+            color: #28a745;
             margin-top: 10px;
+            padding: 10px;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
         }
         .loading {
             display: none;
+            margin-top: 10px;
+            color: #6c757d;
+        }
+        .transaction-count {
+            color: #6c757d;
+            font-size: 14px;
             margin-top: 10px;
         }
     </style>
@@ -72,8 +123,12 @@
         <div id="error" class="error"></div>
         <div id="success" class="success"></div>
         <div id="tablePreview" class="table-preview">
-            <h2>Table Preview</h2>
-            <div id="previewContent"></div>
+            <h2>Bank Statement Summary</h2>
+            <div id="summaryInfo" class="summary-info"></div>
+            <div class="table-container">
+                <div id="transactionCount" class="transaction-count"></div>
+                <div id="previewContent"></div>
+            </div>
             <button class="button" onclick="convertToCSV()">Convert to CSV</button>
         </div>
     </div>
@@ -167,39 +222,86 @@
         function showTablePreview(table) {
             const previewDiv = document.getElementById('tablePreview');
             const contentDiv = document.getElementById('previewContent');
+            const summaryDiv = document.getElementById('summaryInfo');
+            const countDiv = document.getElementById('transactionCount');
             
-            if (!table || !table.preview) {
-                contentDiv.innerHTML = 'No preview available';
+            if (!table || !table.rows) {
+                contentDiv.innerHTML = 'No transactions available';
                 return;
             }
 
+            // Show summary information
+            let summaryHtml = '';
+            if (table.beginning_balance) {
+                summaryHtml += `
+                    <div class="summary-row">
+                        <span>Beginning Balance:</span>
+                        <span>${table.beginning_balance}</span>
+                    </div>`;
+            }
+            if (table.total_amount) {
+                summaryHtml += `
+                    <div class="summary-row">
+                        <span>Total Amount:</span>
+                        <span>${table.total_amount}</span>
+                    </div>`;
+            }
+            summaryDiv.innerHTML = summaryHtml;
+
+            // Show transaction count
+            const transactionCount = table.rows.length - 1; // Subtract header row
+            countDiv.textContent = `Showing ${transactionCount} transactions`;
+
+            // Create table with all transactions
             let html = '<table>';
-            table.preview.forEach(row => {
+            
+            // Add headers
+            html += '<thead><tr>';
+            table.rows[0].forEach(header => {
+                html += `<th>${header}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+            
+            // Add all transaction rows
+            for (let i = 1; i < table.rows.length; i++) {
                 html += '<tr>';
-                row.forEach(cell => {
-                    html += `<td>${cell}</td>`;
+                table.rows[i].forEach((cell, index) => {
+                    if (index === 2) { // Amount column
+                        const isPositive = cell.includes('+');
+                        const className = isPositive ? 'amount-positive' : 'amount-negative';
+                        html += `<td class="${className}">${cell}</td>`;
+                    } else {
+                        html += `<td>${cell}</td>`;
+                    }
                 });
                 html += '</tr>';
-            });
-            html += '</table>';
+            }
+            
+            html += '</tbody></table>';
 
             contentDiv.innerHTML = html;
             previewDiv.style.display = 'block';
         }
 
         function showError(message) {
-            document.getElementById('error').textContent = message;
-            document.getElementById('success').textContent = '';
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            errorDiv.style.display = message ? 'block' : 'none';
+            errorDiv.textContent = message;
+            successDiv.style.display = 'none';
         }
 
         function showSuccess(message) {
-            document.getElementById('success').textContent = message;
-            document.getElementById('error').textContent = '';
+            const errorDiv = document.getElementById('error');
+            const successDiv = document.getElementById('success');
+            successDiv.style.display = message ? 'block' : 'none';
+            successDiv.textContent = message;
+            errorDiv.style.display = 'none';
         }
 
         function clearMessages() {
-            document.getElementById('error').textContent = '';
-            document.getElementById('success').textContent = '';
+            showError('');
+            showSuccess('');
         }
 
         function showLoading() {
